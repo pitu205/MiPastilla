@@ -1,18 +1,13 @@
-# Mi Pastilla 1.3
+# Mi Pastilla v1.4
 
-Aplicación Android para registrar tomas de medicación.
+Interfaz sencilla: pantalla inicial con botón **Crear nueva alerta** y las alertas guardadas. En el formulario se eligen fecha inicial, final, cantidad (¼, ½, ¾, 1) y hora mediante selector 24 h. Al aceptar se guarda y vuelve al inicio.
 
-- Inicia sin tratamientos programados.
-- Permite programar un rango de días y dosis de 1/4, 1/2, 3/4 o 1 pastilla.
-- Permite editar una fecha concreta, confirmar la toma diaria y eliminar un tratamiento sin borrar el historial.
-- Notificaciones desde las 22:00 que intentan repetirse cada cinco minutos hasta la confirmación. Al abrir la notificación, la app indica dosis y fecha.
-- Almacena los datos solo en el móvil.
+La versión actual permite **una programación activa** que se puede editar/eliminar; no gestiona varias alertas simultáneas. Conserva el historial de confirmaciones. La aplicación no prescribe dosis.
 
-Para compilar: GitHub Actions > Crear APK Android > artefacto MiPastilla-APK.
+## Compilación
 
-**Avisos:** Android puede limitar, retrasar o silenciar los avisos, especialmente si se restringe la actividad en segundo plano. Es un recordatorio auxiliar y no una garantía de alerta médica. No cambies las dosis sin indicación de un profesional.
+Subir los archivos al repositorio y ejecutar GitHub Actions. Descargar el artefacto MiPastilla-APK.
 
-- Nueva pantalla **Mis tomas**: calendario mensual con gris para confirmadas, verde para futuras programadas y naranja para vencidas sin confirmar. Permite ver el detalle tocando un día.
+## Avisos
 
-- Aviso verde grande al abrir la notificación: fecha y dosis, con botón grande "YA ME LA HE TOMADO". Desaparece tras confirmar la toma.
-- Diseño con textos y botones más grandes, pensado para personas mayores.
+Para el funcionamiento de notificaciones y alarmas en Android, conceder permisos necesarios y comprobar la gestión de batería. Las repeticiones cada 5 minutos pueden retrasarse por las restricciones de Android.

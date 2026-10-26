@@ -44,7 +44,7 @@ public class ReminderReceiver extends BroadcastReceiver {
         Notification n=new Notification.Builder(c,CHANNEL)
             .setSmallIcon(com.mipastilla.app.R.drawable.ic_pill)
             .setContentTitle("Alarma para su toma: "+Store.dosage(dose)+" pastilla")
-            .setContentText("Fecha: "+day+" · 22:00. Abre para confirmar la toma.")
+            .setContentText("Toma del "+day+". Abre para confirmar.")
             .setContentIntent(pi).setAutoCancel(false).setOngoing(true)
             .setCategory(Notification.CATEGORY_REMINDER).build();
         nm.cancel(NOTIFICATION_ID);
