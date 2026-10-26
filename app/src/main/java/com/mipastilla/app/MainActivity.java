@@ -8,6 +8,12 @@ import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.content.res.ColorStateList;
+import android.view.Gravity;
+import android.widget.GridLayout;
+import java.time.YearMonth;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -24,27 +30,34 @@ public class MainActivity extends Activity {
     TextView range, status, history;
     LocalDate first, last;
     int dose;
+    YearMonth shownMonth = YearMonth.now();
     final String[] choices={"¼ pastilla","½ pastilla","¾ pastilla","1 pastilla"};
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
         store=new Store(this);
-        first=LocalDate.parse(store.start());last=LocalDate.parse(store.end());dose=store.dose();
+        first=store.enabled()?LocalDate.parse(store.start()):LocalDate.now();
+        last=store.enabled()?LocalDate.parse(store.end()):LocalDate.now();dose=store.dose();
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},77);
         render();
     }
     int dp(int v){ return (int)(getResources().getDisplayMetrics().density*v); }
     TextView text(String value,int size){ TextView t=new TextView(this); t.setText(value); t.setTextSize(size);t.setTextColor(Color.rgb(31,41,55));t.setPadding(0,dp(7),0,dp(7));return t; }
-    void addButton(String title,Runnable callback){ Button b=new Button(this); b.setText(title);b.setAllCaps(false);root.addView(b);b.setOnClickListener(v->callback.run()); }
+    void addButton(String title,Runnable callback){ Button b=new Button(this); b.setText(title);b.setAllCaps(false);b.setTextSize(19);b.setMinHeight(dp(62));root.addView(b);b.setOnClickListener(v->callback.run()); }
     void render(){
         ScrollView scroll=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(22),dp(24),dp(22),dp(30));
         scroll.addView(root);setContentView(scroll);
-        TextView heading=text("Mi Pastilla",28);heading.setTextColor(Color.rgb(38,91,133));root.addView(heading);
-        root.addView(text("Recordatorio diario · 22:00 · repetición cada 5 minutos hasta confirmar",14));
+        TextView heading=text("Mi Pastilla",34);heading.setTextColor(Color.rgb(38,91,133));root.addView(heading);
+        root.addView(text("Programa tus tomas y confirma cuándo las has tomado. Avisos a las 22:00.",18));
+        showAlarmBanner();
         status=text("",18);root.addView(status);
-        addButton("Confirmar la toma de hoy",()->confirm());
-        addButton("Editar dosis de un día",()->editDay());
-        root.addView(text("PROGRAMAR TRATAMIENTO",20));
+        addButton("MIS TOMAS  ·  ABRIR CALENDARIO",()->showCalendar());
+        if(store.enabled()){
+            addButton("Confirmar la toma de hoy",()->confirm());
+            addButton("Editar dosis de un día",()->editDay());
+            addButton("Eliminar tratamiento",()->deleteTreatment());
+        }
+        root.addView(text(store.enabled()?"EDITAR TRATAMIENTO":"CREAR MI PRIMER TRATAMIENTO",20));
         range=text("",16);root.addView(range);
         addButton("Elegir fecha de inicio",()->pickDate(first,true));
         addButton("Elegir fecha de fin",()->pickDate(last,false));
@@ -55,8 +68,110 @@ public class MainActivity extends Activity {
         history=text("",15);root.addView(history);
         refreshText();
     }
+    void showAlarmBanner(){
+        Intent intent=getIntent();
+        if(intent==null || !intent.hasExtra("alarm_day")) return;
+        LocalDate alarmDate;
+        try { alarmDate=LocalDate.parse(intent.getStringExtra("alarm_day")); }
+        catch(Exception e){ intent.removeExtra("alarm_day"); return; }
+        if(!store.scheduled(alarmDate) || store.taken(alarmDate)){
+            intent.removeExtra("alarm_day"); return;
+        }
+        int alarmDose=store.doseFor(alarmDate);
+        LinearLayout banner=new LinearLayout(this);
+        banner.setOrientation(LinearLayout.VERTICAL);
+        banner.setPadding(dp(18),dp(18),dp(18),dp(20));
+        banner.setBackground(background(color(29,125,65)));
+        LinearLayout.LayoutParams margin=new LinearLayout.LayoutParams(-1,-2);
+        margin.setMargins(0,dp(14),0,dp(18));
+        root.addView(banner,margin);
+        TextView title=text("ALARMA DE SU TOMA",27);
+        title.setGravity(Gravity.CENTER);
+        title.setTypeface(null,Typeface.BOLD);
+        title.setTextColor(Color.WHITE);
+        banner.addView(title);
+        TextView message=text("VA A TOMAR\n"+Store.dosage(alarmDose)+" PASTILLA\nDEL DÍA "+alarmDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),27);
+        message.setTextColor(Color.WHITE);
+        message.setTypeface(null,Typeface.BOLD);
+        message.setGravity(Gravity.CENTER);
+        message.setLineSpacing(dp(5),1f);
+        banner.addView(message);
+        Button confirm=new Button(this);
+        confirm.setAllCaps(false);
+        confirm.setText("YA ME LA HE TOMADO");
+        confirm.setTextSize(22);
+        confirm.setTypeface(null,Typeface.BOLD);
+        confirm.setTextColor(color(13,90,48));
+        confirm.setBackgroundTintList(ColorStateList.valueOf(Color.WHITE));
+        LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-1,dp(86));
+        bp.setMargins(0,dp(12),0,0);
+        banner.addView(confirm,bp);
+        confirm.setOnClickListener(v->confirmForDay(alarmDate));
+    }
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent);
+        setIntent(intent);
+        render();
+    }
+    int color(int r,int g,int b){return Color.rgb(r,g,b);}
+    GradientDrawable background(int fill){
+        GradientDrawable d=new GradientDrawable();d.setColor(fill);d.setCornerRadius(dp(10));return d;
+    }
+    void showCalendar(){
+        ScrollView scroll=new ScrollView(this);
+        LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(16),dp(18),dp(16),dp(24));scroll.addView(page);setContentView(scroll);
+        Button back=new Button(this);back.setText("← Volver");back.setAllCaps(false);
+        back.setOnClickListener(v->render());page.addView(back);
+        TextView title=text("Mis tomas",30);title.setTypeface(null,Typeface.BOLD);page.addView(title);
+        page.addView(text("GRIS: YA TOMADA\nVERDE: PRÓXIMAS TOMAS\nNARANJA: SIN CONFIRMAR",18));
+        LinearLayout nav=new LinearLayout(this);nav.setOrientation(LinearLayout.HORIZONTAL);page.addView(nav);
+        Button prev=new Button(this);prev.setText("‹");nav.addView(prev,new LinearLayout.LayoutParams(0,dp(50),1));
+        TextView month=text(shownMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy",new java.util.Locale("es","ES"))),19);
+        month.setGravity(Gravity.CENTER);month.setTypeface(null,Typeface.BOLD);
+        nav.addView(month,new LinearLayout.LayoutParams(0,dp(50),4));
+        Button next=new Button(this);next.setText("›");nav.addView(next,new LinearLayout.LayoutParams(0,dp(50),1));
+        prev.setOnClickListener(v->{shownMonth=shownMonth.minusMonths(1);showCalendar();});
+        next.setOnClickListener(v->{shownMonth=shownMonth.plusMonths(1);showCalendar();});
+        GridLayout grid=new GridLayout(this);grid.setColumnCount(7);page.addView(grid);
+        int width=getResources().getDisplayMetrics().widthPixels-dp(32);
+        int cell=width/7;
+        for(String label:new String[]{"L","M","X","J","V","S","D"}){
+            TextView day=text(label,13);day.setTypeface(null,Typeface.BOLD);day.setGravity(Gravity.CENTER);
+            grid.addView(day,new android.view.ViewGroup.LayoutParams(cell,dp(38)));
+        }
+        int offset=shownMonth.atDay(1).getDayOfWeek().getValue()-1;
+        for(int i=0;i<offset;i++) grid.addView(new TextView(this),new android.view.ViewGroup.LayoutParams(cell,dp(53)));
+        LocalDate today=LocalDate.now();
+        for(int n=1;n<=shownMonth.lengthOfMonth();n++){
+            LocalDate day=shownMonth.atDay(n);
+            boolean taken=store.taken(day), scheduled=store.scheduled(day);
+            TextView tile=text(Integer.toString(n)+(taken?"\n✓":scheduled?"\n"+Store.dosage(store.doseFor(day)):""),17);
+            tile.setGravity(Gravity.CENTER);tile.setPadding(dp(2),dp(2),dp(2),dp(2));
+            if(taken) tile.setBackground(background(color(202,207,214)));
+            else if(scheduled && !day.isBefore(today)) tile.setBackground(background(color(175,228,186)));
+            else if(scheduled) tile.setBackground(background(color(250,210,154)));
+            else tile.setBackground(background(color(242,244,247)));
+            if(day.equals(today)) tile.setTypeface(null,Typeface.BOLD);
+            GridLayout.LayoutParams params=new GridLayout.LayoutParams();params.width=cell-dp(2);params.height=dp(51);
+            params.setMargins(dp(1),dp(1),dp(1),dp(1));grid.addView(tile,params);
+            tile.setOnClickListener(v->dayDetails(day));
+        }
+        page.addView(text("Pulsa sobre cualquier día para ver el detalle de la toma.",14));
+        if(!store.enabled())page.addView(text("No hay un tratamiento activo. Las tomas anteriores confirmadas siguen visibles en gris.",17));
+    }
+    void dayDetails(LocalDate d){
+        String message;
+        if(store.taken(d)) message="Toma confirmada\n"+entry(d);
+        else if(store.scheduled(d)) message= "Dosis programada: "+Store.dosage(store.doseFor(d))+" pastilla\n"+
+                (d.isBefore(LocalDate.now())?"Vencida, sin confirmación": "Pendiente de confirmar");
+        else message="No hay una toma programada ni confirmada para este día.";
+        new AlertDialog.Builder(this).setTitle("Toma del "+d.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))
+            .setMessage(message).setPositiveButton("Cerrar",null).show();
+    }
+    @Override public void onBackPressed(){render();}
     void refreshText(){
-        range.setText("Del "+first+" al "+last+" (ambos incluidos)\nDosis prevista: "+choices[dose-1]);
+        range.setText((store.enabled()?"Tratamiento guardado: "+store.start()+" al "+store.end()+" (ambos incluidos)\nDosis diaria: "+choices[store.dose()-1]:"Todavía no hay tratamiento guardado.")+"\nRango que estás editando: "+first+" al "+last+" · "+choices[dose-1]);
         LocalDate today=LocalDate.now();
         if(!store.scheduled(today))status.setText("Hoy no hay una toma programada.");
         else if(store.taken(today))status.setText("✓ Toma de hoy registrada: "+entry(today));
@@ -89,19 +204,29 @@ public class MainActivity extends Activity {
         Toast.makeText(this,"Tratamiento programado",Toast.LENGTH_SHORT).show();
         permissionHint();
     }
-    void confirm(){
-        LocalDate day=LocalDate.now();
-        if(!store.scheduled(day)){Toast.makeText(this,"Hoy no hay tratamiento programado",Toast.LENGTH_LONG).show();return;}
-        if(store.taken(day)){new AlertDialog.Builder(this).setTitle("Toma ya confirmada").setMessage("Ya has registrado la pastilla de hoy. No se registrará otra toma.").setPositiveButton("Aceptar",null).show();return;}
+    void deleteTreatment(){
+        new AlertDialog.Builder(this).setTitle("Eliminar tratamiento")
+            .setMessage("¿Eliminar la programación y detener sus alarmas? Se conservará el historial de tomas confirmadas.")
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("Eliminar",(dialog,which)->{
+                store.deleteTreatment();ReminderReceiver.clear(this);Scheduler.refresh(this);
+                first=LocalDate.now();last=first;dose=2;
+                if(getIntent()!=null)getIntent().removeExtra("alarm_day");render();
+            }).show();
+    }
+    void confirm(){ confirmForDay(LocalDate.now()); }
+    void confirmForDay(LocalDate day){
+        if(!store.scheduled(day)){Toast.makeText(this,"No hay tratamiento programado para esa fecha",Toast.LENGTH_LONG).show();return;}
+        if(store.taken(day)){new AlertDialog.Builder(this).setTitle("Toma ya confirmada").setMessage("Ya has registrado la toma de este día. No se registrará otra toma.").setPositiveButton("Aceptar",null).show();return;}
         final int[] chosen={store.doseFor(day)};
-        new AlertDialog.Builder(this).setTitle("¿Qué cantidad has tomado?")
+        new AlertDialog.Builder(this).setTitle("¿Qué cantidad has tomado el "+day.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))+"?")
             .setSingleChoiceItems(choices,chosen[0]-1,(dlg,which)->chosen[0]=which+1)
             .setNegativeButton("Cancelar",null)
             .setPositiveButton("Confirmar",(dlg,which)->{
                 new AlertDialog.Builder(this).setTitle("Confirmar toma")
                     .setMessage("¿Confirmas que YA has tomado "+choices[chosen[0]-1]+"? Esto solo registra la toma; no indica qué dosis debes tomar.")
                     .setNegativeButton("Volver",null)
-                    .setPositiveButton("Sí, la he tomado",(a,b)->{store.record(day,chosen[0]);ReminderReceiver.clear(this);Scheduler.refresh(this);render();}).show();
+                    .setPositiveButton("Sí, la he tomado",(a,b)->{store.record(day,chosen[0]);ReminderReceiver.clear(this);Scheduler.refresh(this);if(getIntent()!=null)getIntent().removeExtra("alarm_day");render();}).show();
             }).show();
     }
     void editDay(){

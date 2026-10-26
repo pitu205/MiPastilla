@@ -14,6 +14,12 @@ final class Store {
     int minute() { return p.getInt("minute", 0); }
     int dose() { return p.getInt("dose", 2); } // cuartos: 1,2,3,4
     boolean enabled() { return p.getBoolean("enabled", false); }
+    void deleteTreatment() {
+        SharedPreferences.Editor e=p.edit();
+        e.remove("enabled").remove("start").remove("end").remove("hour").remove("minute").remove("dose");
+        for(String key:p.getAll().keySet()) if(key.startsWith("override_")) e.remove(key);
+        e.apply();
+    }
     void save(String start, String end, int hour, int minute, int dose) {
         p.edit().putString("start", start).putString("end", end).putInt("hour", hour).putInt("minute", minute).putInt("dose", dose).putBoolean("enabled", true).apply();
     }
