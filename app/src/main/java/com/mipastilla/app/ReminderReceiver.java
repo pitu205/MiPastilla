@@ -2,6 +2,8 @@ package com.mipastilla.app;
 
 import android.Manifest;
 import android.app.Notification;
+import android.media.RingtoneManager;
+import android.media.AudioAttributes;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -14,7 +16,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public class ReminderReceiver extends BroadcastReceiver {
-    static final String CHANNEL="toma_persistente_v1";
+    static final String CHANNEL="toma_alarma_sonora_v2";
     static final int NOTIFICATION_ID=2200;
     @Override public void onReceive(Context c, Intent i) {
         Store s=new Store(c);
@@ -33,6 +35,10 @@ public class ReminderReceiver extends BroadcastReceiver {
             NotificationChannel ch=new NotificationChannel(CHANNEL,"Avisos de medicación",NotificationManager.IMPORTANCE_HIGH);
             ch.setDescription("Avisos sonoros de medicación sin confirmar");
             ch.enableVibration(true);
+            ch.setVibrationPattern(new long[]{0,800,400,800});
+            ch.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build());
+            ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             nm.createNotificationChannel(ch);
         }
         if(Build.VERSION.SDK_INT>=33 && c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return;
@@ -45,8 +51,10 @@ public class ReminderReceiver extends BroadcastReceiver {
             .setSmallIcon(com.mipastilla.app.R.drawable.ic_pill)
             .setContentTitle("Alarma para su toma: "+Store.dosage(dose)+" pastilla")
             .setContentText("Toma del "+day+". Abre para confirmar.")
-            .setContentIntent(pi).setAutoCancel(false).setOngoing(true)
-            .setCategory(Notification.CATEGORY_REMINDER).build();
+            .setContentIntent(pi).setFullScreenIntent(pi,true)
+            .setPriority(Notification.PRIORITY_MAX).setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setAutoCancel(false).setOngoing(true)
+            .setCategory(Notification.CATEGORY_ALARM).build();
         nm.cancel(NOTIFICATION_ID);
         nm.notify(NOTIFICATION_ID,n);
     }

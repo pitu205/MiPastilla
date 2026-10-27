@@ -4,7 +4,9 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
-import android.app.TimePickerDialog;
+import android.media.RingtoneManager;
+import android.media.MediaPlayer;
+import android.widget.NumberPicker;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -26,6 +28,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 public class MainActivity extends Activity {
+    MediaPlayer alarmPlayer;
     Store store;
     LinearLayout root;
     TextView range, status, history;
@@ -55,6 +58,7 @@ public class MainActivity extends Activity {
         parent.addView(button,lp);button.setOnClickListener(v->action.run());
     }
     void render(){
+        stopAlarmSound();
         ScrollView scroll=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);
         root.setPadding(dp(20),dp(26),dp(20),dp(30));scroll.addView(root);setContentView(scroll);
         TextView heading=text("Mi Pastilla",36);heading.setTypeface(null,Typeface.BOLD);heading.setGravity(Gravity.CENTER);
@@ -97,11 +101,50 @@ public class MainActivity extends Activity {
             .setSingleChoiceItems(choices,dose-1,(dlg,which)->{dose=which+1;dlg.dismiss();showCreateAlert();})
             .setNegativeButton("Cancelar",null).show(),false);
         TextView hourLabel=text("Hora: "+timeLabel(),26);hourLabel.setTypeface(null,Typeface.BOLD);page.addView(hourLabel);
-        addLargeButton(page,"ELEGIR HORA",()->new TimePickerDialog(this,(picker,h,m)->{
-            chosenHour=h;chosenMinute=m;showCreateAlert();
-        },chosenHour,chosenMinute,true).show(),false);
+        addLargeButton(page,"ELEGIR HORA",()->showWheelPicker(),false);
         addLargeButton(page,"ACEPTAR Y GUARDAR",()->save(),true);
     }
+    void showWheelPicker(){
+        LinearLayout wheels=new LinearLayout(this);
+        wheels.setGravity(Gravity.CENTER);
+        wheels.setPadding(dp(12),dp(12),dp(12),dp(12));
+        NumberPicker hours=new NumberPicker(this);
+        hours.setMinValue(0);hours.setMaxValue(23);hours.setValue(chosenHour);
+        hours.setWrapSelectorWheel(true);
+        NumberPicker minutes=new NumberPicker(this);
+        minutes.setMinValue(0);minutes.setMaxValue(59);minutes.setValue(chosenMinute);
+        minutes.setFormatter(value->String.format(java.util.Locale.getDefault(),"%02d",value));
+        minutes.setWrapSelectorWheel(true);
+        wheels.addView(hours,new LinearLayout.LayoutParams(0,dp(190),1));
+        TextView separator=text(":",36);separator.setGravity(Gravity.CENTER);wheels.addView(separator);
+        wheels.addView(minutes,new LinearLayout.LayoutParams(0,dp(190),1));
+        new AlertDialog.Builder(this).setTitle("Seleccionar hora · 24 h")
+            .setView(wheels).setNegativeButton("Cancelar",null)
+            .setPositiveButton("ACEPTAR",(dialog,which)->{
+                hours.clearFocus();minutes.clearFocus();
+                chosenHour=hours.getValue();chosenMinute=minutes.getValue();showCreateAlert();
+            }).show();
+    }
+    void startAlarmSound(){
+        if(alarmPlayer!=null)return;
+        try{
+            android.net.Uri uri=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+            if(uri==null)uri=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            alarmPlayer=MediaPlayer.create(this,uri);
+            if(alarmPlayer!=null){
+                alarmPlayer.setAudioAttributes(new android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
+                alarmPlayer.setLooping(true);alarmPlayer.start();
+            }
+        }catch(Exception error){ stopAlarmSound(); }
+    }
+    void stopAlarmSound(){
+        if(alarmPlayer!=null){try{alarmPlayer.stop();}catch(Exception ignored){}
+            alarmPlayer.release();alarmPlayer=null;}
+    }
+    @Override protected void onPause(){super.onPause();stopAlarmSound();}
+    @Override protected void onDestroy(){stopAlarmSound();super.onDestroy();}
     void pickDateForForm(boolean begin){
         LocalDate d=begin?first:last;
         new DatePickerDialog(this,(picker,y,m,day)->{
@@ -120,6 +163,7 @@ public class MainActivity extends Activity {
             intent.removeExtra("alarm_day"); return;
         }
         int alarmDose=store.doseFor(alarmDate);
+        startAlarmSound();
         LinearLayout banner=new LinearLayout(this);
         banner.setOrientation(LinearLayout.VERTICAL);
         banner.setPadding(dp(18),dp(18),dp(18),dp(20));
@@ -268,7 +312,7 @@ public class MainActivity extends Activity {
                 new AlertDialog.Builder(this).setTitle("Confirmar toma")
                     .setMessage("¿Confirmas que YA has tomado "+choices[chosen[0]-1]+"? Esto solo registra la toma; no indica qué dosis debes tomar.")
                     .setNegativeButton("Volver",null)
-                    .setPositiveButton("Sí, la he tomado",(a,b)->{store.record(day,chosen[0]);ReminderReceiver.clear(this);Scheduler.refresh(this);if(getIntent()!=null)getIntent().removeExtra("alarm_day");render();}).show();
+                    .setPositiveButton("Sí, la he tomado",(a,b)->{store.record(day,chosen[0]);ReminderReceiver.clear(this);Scheduler.refresh(this);stopAlarmSound();if(getIntent()!=null)getIntent().removeExtra("alarm_day");render();new AlertDialog.Builder(this).setTitle("TOMA CONFIRMADA").setMessage("La toma del "+dateLabel(day)+" ha quedado registrada.").setPositiveButton("ACEPTAR",null).show();}).show();
             }).show();
     }
     void editDay(){
